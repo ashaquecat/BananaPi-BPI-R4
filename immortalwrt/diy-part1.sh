@@ -31,11 +31,6 @@ merge_package "-b Immortalwrt https://github.com/shidahuilang/openwrt-package" o
 popd
 
 # add luci-app-mosdns
-# Note: immortalwrt openwrt-25.12 already ships Go 1.26 natively via its new
-# multi-version golang system (golang/ dummy + golang1.26/ actual compiler).
-# Replacing feeds/packages/lang/golang with sbwml's single-version package
-# deletes the golang1.26/ sub-package that xray-plugin and other packages
-# depend on, causing build failures. No golang replacement needed here.
 rm -rf feeds/packages/net/mosdns
 git clone https://github.com/sbwml/luci-app-mosdns -b v5 package/mosdns
 
