@@ -34,7 +34,7 @@ fi
 #   - get_private_gateway (defined in main.c, used in QMIThread.c)
 # Also fix 'return ;' (return with no value) in void* thread_socket_server in main.c.
 FIBOCOM_QMITHREAD_H="package/community/5G-Modem-Support/fibocom-dial/src/QMIThread.h"
-if [ -f "$FIBOCOM_QMITHREAD_H" ]; then
+if [ -f "$FIBOCOM_QMITHREAD_H" ] && ! grep -q 'requestGetSIMCardNumber' "$FIBOCOM_QMITHREAD_H"; then
   sed -i '$i extern int requestGetSIMCardNumber(PROFILE_T *profile);' "$FIBOCOM_QMITHREAD_H"
   sed -i '$i extern int requestSimBindSubscription_NAS_WMS(void);' "$FIBOCOM_QMITHREAD_H"
   sed -i '$i extern int requestSimBindSubscription_WDS_DMS_QOS(void);' "$FIBOCOM_QMITHREAD_H"
