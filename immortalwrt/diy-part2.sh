@@ -33,13 +33,14 @@ fi
 #     requestSimBindSubscription_WDS_DMS_QOS (defined in QMIThread.c, used in main.c)
 #   - get_private_gateway (defined in main.c, used in QMIThread.c)
 # Also fix 'return ;' (return with no value) in void* thread_socket_server in main.c.
-FIBOCOM_QMITHREAD_H="package/community/5G-Modem-Support/fibocom-dial/src/QMIThread.h"
-if [ -f "$FIBOCOM_QMITHREAD_H" ]; then
+FIBOCOM_DIAL_SRC="package/community/5G-Modem-Support/fibocom-dial/src"
+FIBOCOM_QMITHREAD_H="${FIBOCOM_DIAL_SRC}/QMIThread.h"
+if [ -f "$FIBOCOM_QMITHREAD_H" ] && ! grep -q 'extern int requestGetSIMCardNumber' "$FIBOCOM_QMITHREAD_H"; then
   sed -i '$i extern int requestGetSIMCardNumber(PROFILE_T *profile);' "$FIBOCOM_QMITHREAD_H"
   sed -i '$i extern int requestSimBindSubscription_NAS_WMS(void);' "$FIBOCOM_QMITHREAD_H"
   sed -i '$i extern int requestSimBindSubscription_WDS_DMS_QOS(void);' "$FIBOCOM_QMITHREAD_H"
   sed -i '$i extern int get_private_gateway(char *outgateway);' "$FIBOCOM_QMITHREAD_H"
 fi
-if [ -f package/community/5G-Modem-Support/fibocom-dial/src/main.c ]; then
-  sed -i 's/return ;/return NULL;/g' package/community/5G-Modem-Support/fibocom-dial/src/main.c
+if [ -f "${FIBOCOM_DIAL_SRC}/main.c" ]; then
+  sed -i 's/return ;/return NULL;/g' "${FIBOCOM_DIAL_SRC}/main.c"
 fi
