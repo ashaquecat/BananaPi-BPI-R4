@@ -90,7 +90,6 @@ jobs:
              
     - name: Compile the firmware
       id: compile
-      timeout-minutes: 240
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
