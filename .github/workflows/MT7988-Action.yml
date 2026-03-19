@@ -7,7 +7,7 @@ on:
 
 env:
   REPO_URL: https://github.com/padavanonly/immortalwrt-mt798x-6.6
-  REPO_BRANCH: mt798x-mt799x-6.6-mtwifi
+  REPO_BRANCH:  openwrt-24.10-6.6
   CONFIG_FILE: immortalwrt/mtk/defconfig
   DIY_P1_SH: immortalwrt/diy-part3.sh
   DIY_P2_SH: immortalwrt/diy-part4.sh
@@ -20,6 +20,7 @@ env:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 330
 
     steps:
     - name: Maximize build space
@@ -91,10 +92,11 @@ jobs:
              
     - name: Compile the firmware
       id: compile
+      timeout-minutes: 240
       run: |
         cd openwrt
         echo -e "$(nproc) thread compile"
-        make -j$(nproc) || make -j1 || make -j1 V=s
+        make -j$(nproc) || make -j$(($(nproc)/2 + 1)) || make -j1 V=s
         echo "date1=$(date +'%Y.%m.%d')" >> $GITHUB_ENV
         echo "date2=$(date "+%Y年%m月%d日")" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
