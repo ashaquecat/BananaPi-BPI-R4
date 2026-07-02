@@ -88,6 +88,58 @@ echo 'src-git-full mtk_openwrt_feeds https://github.com/mediatek/mtk-openwrt-fee
 # Re-run feeds update after manual feed modifications
 ./scripts/feeds update -a
 
+# Add kmod-mediatek_hnat: immortalwrt openwrt-25.12 does not define this package.
+# mtk_npu/Makefile from mtk-openwrt-feeds depends on it, so we must:
+#   1. copy the 6.12 driver sources into the kernel target tree
+#   2. copy the hnat/eth/net/tnl kernel patches (skip sfp — handled by workspace patches)
+#   3. append the KernelPackage definition to target/linux/mediatek/modules.mk
+# Source: https://github.com/mediatek/mtk-openwrt-feeds/tree/main/autobuild/unified/global/logan_common/25.12/files/target/linux/mediatek
+MTK_FEEDS_HNAT="feeds/mtk_openwrt_feeds/autobuild/unified/global/logan_common/25.12/files/target/linux/mediatek"
+if [ -d "$MTK_FEEDS_HNAT" ]; then
+    # Driver source files
+    mkdir -p target/linux/mediatek/files-6.12/drivers/net/ethernet/mediatek/mtk_hnat
+    mkdir -p target/linux/mediatek/files-6.12/include/net
+    cp -r "$MTK_FEEDS_HNAT/files-6.12/drivers/net/ethernet/mediatek/mtk_hnat/." \
+        target/linux/mediatek/files-6.12/drivers/net/ethernet/mediatek/mtk_hnat/
+    [ -f "$MTK_FEEDS_HNAT/files-6.12/include/net/ra_nat.h" ] && \
+        cp -n "$MTK_FEEDS_HNAT/files-6.12/include/net/ra_nat.h" \
+            target/linux/mediatek/files-6.12/include/net/ || true
+    # Kernel patches — skip sfp (already applied via workspace patch set)
+    mkdir -p target/linux/mediatek/patches-6.12
+    for _patch in "$MTK_FEEDS_HNAT/patches-6.12/"*.patch; do
+        [ -f "$_patch" ] || continue
+        case "$(basename "$_patch")" in 999-sfp-*) continue ;; esac
+        cp -n "$_patch" target/linux/mediatek/patches-6.12/ || true
+    done
+    # KernelPackage definition (idempotent)
+    if ! grep -q 'KernelPackage/mediatek_hnat' target/linux/mediatek/modules.mk 2>/dev/null; then
+        cat >> target/linux/mediatek/modules.mk << 'MODULES_EOF'
+
+define KernelPackage/mediatek_hnat
+  SUBMENU:=Network Devices
+  TITLE:=Mediatek HNAT module
+  DEPENDS:=@TARGET_mediatek +kmod-nf-conntrack
+  KCONFIG:= \
+	CONFIG_BRIDGE_NETFILTER=y \
+	CONFIG_NETFILTER_FAMILY_BRIDGE=y \
+	CONFIG_NET_MEDIATEK_HNAT
+  FILES:=$(LINUX_DIR)/drivers/net/ethernet/mediatek/mtk_hnat/mtkhnat.ko
+  AUTOLOAD:=$(call AutoLoad,30,mtkhnat,1)
+endef
+
+define KernelPackage/mediatek_hnat/description
+  Kernel modules for MediaTek HW NAT offloading
+endef
+
+$(eval $(call KernelPackage,mediatek_hnat))
+MODULES_EOF
+        echo "kmod-mediatek_hnat: KernelPackage definition added to modules.mk"
+    fi
+    echo "kmod-mediatek_hnat: driver sources and patches installed from mtk-openwrt-feeds"
+else
+    echo "WARNING: mtk-openwrt-feeds hnat path not found at $MTK_FEEDS_HNAT" >&2
+fi
+
 # Re-apply golang replacement (feeds update reverts it)
 rm -rf feeds/packages/lang/golang
 git clone --depth=1 https://github.com/sbwml/packages_lang_golang -b 26.x feeds/packages/lang/golang
