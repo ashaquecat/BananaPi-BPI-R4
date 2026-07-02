@@ -83,7 +83,9 @@ popd
 
 # Register mtk-openwrt-feeds so kmod-npu and sub-packages are available.
 # immortalwrt openwrt-25.12 does not include this feed in feeds.conf.default.
-echo 'src-git-full mtk_openwrt_feeds https://github.com/mediatek/mtk-openwrt-feeds.git;main' >> feeds.conf.default
+# Use src-git (shallow clone) instead of src-git-full to avoid cloning the full
+# multi-branch history (~400 MB) which would time out GitHub Actions.
+echo 'src-git mtk_openwrt_feeds https://github.com/mediatek/mtk-openwrt-feeds.git;main' >> feeds.conf.default
 
 # Re-run feeds update after manual feed modifications
 ./scripts/feeds update -a
@@ -91,12 +93,11 @@ echo 'src-git-full mtk_openwrt_feeds https://github.com/mediatek/mtk-openwrt-fee
 # Add kmod-mediatek_hnat: immortalwrt openwrt-25.12 does not define this package.
 # mtk_npu/Makefile from mtk-openwrt-feeds depends on it, so we must:
 #   1. copy the 6.12 driver sources into the kernel target tree
-#   2. copy the hnat/eth/net/tnl kernel patches (skip sfp — handled by workspace patches)
+#   2. copy BPI-R4 / mt7988 relevant kernel patches (skip sfp and other SoC DTS patches)
 #   3. append the KernelPackage definition to target/linux/mediatek/modules.mk
 # Source: https://github.com/mediatek/mtk-openwrt-feeds/tree/main/autobuild/unified/global/logan_common/25.12/files/target/linux/mediatek
 MTK_FEEDS_HNAT="feeds/mtk_openwrt_feeds/autobuild/unified/global/logan_common/25.12/files/target/linux/mediatek"
 if [ -d "$MTK_FEEDS_HNAT" ]; then
-    # Driver source files
     # Driver sources: always overwrite — mtk-openwrt-feeds is authoritative for hnat
     mkdir -p target/linux/mediatek/files-6.12/drivers/net/ethernet/mediatek/mtk_hnat
     cp -rf "$MTK_FEEDS_HNAT/files-6.12/drivers/net/ethernet/mediatek/mtk_hnat/." \
@@ -107,11 +108,29 @@ if [ -d "$MTK_FEEDS_HNAT" ]; then
         cp -f "$MTK_FEEDS_HNAT/files-6.12/include/net/ra_nat.h" \
             target/linux/mediatek/files-6.12/include/net/
     fi
-    # Kernel patches — skip sfp (already applied via workspace patch set)
+    # Kernel patches — copy only patches needed for BPI-R4 (mt7988):
+    #   999-eth-*   ethernet/HNAT driver hooks into mtk_eth_soc
+    #   999-hnat-*  netfilter/bridge/pppoe/vxlan offload hooks
+    #   999-net-*   netdevice path-type additions for tunnel offload
+    #   999-tnl-*   tunnel (GRE/VXLAN/PPTP/L2TP) offload support
+    #   999-dts-mt7988a-* BPI-R4 specific DTS additions for HNAT/NPU
+    # Excluded:
+    #   999-sfp-*              handled by workspace patch set
+    #   999-dts-mt798[1679]*   irrelevant SoC DTS patches (mt7981/mt7986/mt7987)
     mkdir -p target/linux/mediatek/patches-6.12
     for _patch in "$MTK_FEEDS_HNAT/patches-6.12/"*.patch; do
         [ -f "$_patch" ] || continue
-        case "$(basename "$_patch")" in 999-sfp-*) continue ;; esac
+        _name="$(basename "$_patch")"
+        case "$_name" in
+            999-sfp-*)                     continue ;;  # workspace handles sfp
+            999-dts-mt7981-*|\
+            999-dts-mt7986*|\
+            999-dts-mt7987*)               continue ;;  # irrelevant SoC
+            999-dts-*)                     ;;            # mt7988a BPI-R4 DTS — keep
+            999-eth-*|999-hnat-*|\
+            999-net-*|999-tnl-*)           ;;            # functional patches — keep
+            *)                             continue ;;  # anything else — skip
+        esac
         cp -n "$_patch" target/linux/mediatek/patches-6.12/ || true
     done
     # KernelPackage definition (idempotent)
