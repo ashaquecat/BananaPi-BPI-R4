@@ -1,0 +1,207 @@
+#!/bin/sh
+
+set -eu
+
+json_update() {
+	local path="$1"
+	local code="$2"
+
+	[ -f "$path" ] || return 0
+	command -v ucode >/dev/null 2>&1 || return 0
+
+	MENU_PATH="$path" UCODE_SNIPPET="$code" ucode - <<'UCODE'
+const fs = require('fs');
+const path = getenv('MENU_PATH');
+let m = json(fs.readfile(path));
+
+eval(getenv('UCODE_SNIPPET'));
+
+fs.writefile(path, sprintf('%J\n', m));
+UCODE
+}
+
+# Status menu order:
+# Overview, Routing, Processes, Firewall, Realtime, System Log, Cellular hidden,
+# Fan, Release RAM, Netdata, WireGuard.
+json_update /usr/share/luci/menu.d/luci-mod-status.json "
+if (m['admin/status/overview']) m['admin/status/overview'].order = 10;
+if (m['admin/status/routes']) m['admin/status/routes'].order = 20;
+if (m['admin/status/processes']) m['admin/status/processes'].order = 30;
+if (m['admin/status/iptables']) m['admin/status/iptables'].order = 40;
+if (m['admin/status/nftables']) m['admin/status/nftables'].order = 40;
+if (m['admin/status/realtime']) m['admin/status/realtime'].order = 50;
+if (m['admin/status/logs']) m['admin/status/logs'].order = 60;
+if (m['admin/status/channel_analysis']) m['admin/status/channel_analysis'].order = 999;
+"
+
+json_update /usr/share/luci/menu.d/luci-proto-modemmanager.json "
+if (m['admin/status/modemmanager']) {
+	m['admin/status/modemmanager'].order = 70;
+	m['admin/status/modemmanager'].depends = m['admin/status/modemmanager'].depends || {};
+	m['admin/status/modemmanager'].depends.fs = { '/etc/codex-show-cellular-network': 'executable' };
+}
+"
+
+json_update /usr/share/luci/menu.d/luci-app-fan.json "
+if (m['admin/status/luci-fan']) m['admin/status/luci-fan'].order = 80;
+"
+
+json_update /usr/share/luci/menu.d/luci-app-ramfree.json "
+if (m['admin/status/release_ram']) m['admin/status/release_ram'].order = 90;
+"
+
+json_update /usr/share/luci/menu.d/luci-app-netdata.json "
+let item = m['admin/system/netdata'] || m['admin/status/netdata'];
+if (item) {
+	item.order = 95;
+	m = { 'admin/status/netdata': item };
+}
+"
+
+json_update /usr/share/luci/menu.d/luci-proto-wireguard.json "
+if (m['admin/status/wireguard']) m['admin/status/wireguard'].order = 100;
+"
+
+# Keep any installed modem/cellular menu hidden without deleting its files.
+json_update /usr/share/luci/menu.d/luci-app-modemband.json "
+if (m['admin/modem']) {
+	m['admin/modem'].depends = m['admin/modem'].depends || {};
+	m['admin/modem'].depends.fs = { '/etc/codex-show-cellular-menu': 'executable' };
+}
+"
+
+# System menu: System, Administration first; everything else keeps its order.
+json_update /usr/share/luci/menu.d/luci-mod-system.json "
+if (m['admin/system/system']) m['admin/system/system'].order = 1;
+if (m['admin/system/admin']) m['admin/system/admin'].order = 2;
+"
+
+# Port status should show eth1 as WAN.
+if [ -f /etc/board.json ] && command -v ucode >/dev/null 2>&1; then
+	ucode - <<'UCODE'
+const fs = require('fs');
+let b = json(fs.readfile('/etc/board.json'));
+if (b?.network?.lan?.ports)
+	b.network.lan.ports = filter(b.network.lan.ports, p => p != 'eth1');
+if (b?.network?.wan)
+	b.network.wan.ports = [ 'eth1', b.network.wan.device || 'wan' ];
+fs.writefile('/etc/board.json', sprintf('%J\n', b));
+UCODE
+fi
+
+# Default DSA VLAN layout:
+# - eth1 stays as WAN, so WAN-side management remains reachable.
+# - LAN-side ports are untagged VLAN 1 on br-lan.1.
+if command -v uci >/dev/null 2>&1; then
+	delete_network_device_by_name() {
+		local device_name="$1"
+		local section
+
+		while :; do
+			section="$(uci show network 2>/dev/null | sed -n "s/^\(network\.[^=]*\)=device$/\1/p" | while read -r s; do
+				[ "$(uci -q get "$s.name")" = "$device_name" ] && {
+					printf '%s\n' "$s"
+					break
+				}
+			done)"
+			[ -n "$section" ] || break
+			uci -q delete "$section"
+		done
+	}
+
+	delete_network_bridge_vlans_by_device() {
+		local device_name="$1"
+		local section
+
+		while :; do
+			section="$(uci show network 2>/dev/null | sed -n "s/^\(network\.[^=]*\)=bridge-vlan$/\1/p" | while read -r s; do
+				[ "$(uci -q get "$s.device")" = "$device_name" ] && {
+					printf '%s\n' "$s"
+					break
+				}
+			done)"
+			[ -n "$section" ] || break
+			uci -q delete "$section"
+		done
+	}
+
+	delete_network_device_by_name br-lan
+	delete_network_bridge_vlans_by_device br-lan
+
+	uci set network.br_lan='device'
+	uci set network.br_lan.name='br-lan'
+	uci set network.br_lan.type='bridge'
+	uci set network.br_lan.vlan_filtering='1'
+	uci -q delete network.br_lan.ports
+	uci add_list network.br_lan.ports='lan1'
+	uci add_list network.br_lan.ports='lan2'
+	uci add_list network.br_lan.ports='lan3'
+	uci add_list network.br_lan.ports='eth2'
+
+	uci set network.br_lan_vlan1='bridge-vlan'
+	uci set network.br_lan_vlan1.device='br-lan'
+	uci set network.br_lan_vlan1.vlan='1'
+	uci -q delete network.br_lan_vlan1.ports
+	uci add_list network.br_lan_vlan1.ports='lan1:u*'
+	uci add_list network.br_lan_vlan1.ports='lan2:u*'
+	uci add_list network.br_lan_vlan1.ports='lan3:u*'
+	uci add_list network.br_lan_vlan1.ports='eth2:u*'
+
+	uci set network.lan.device='br-lan.1'
+	uci set network.wan.device='eth1'
+	uci set network.wan.proto='dhcp'
+	uci commit network
+fi
+
+# Allow this workstation to manage the router over the WAN-side address.
+if command -v uci >/dev/null 2>&1 && ! uci show firewall 2>/dev/null | grep -q "Allow-SSH-WAN-Codex"; then
+	uci add firewall rule >/dev/null
+	uci set firewall.@rule[-1].name='Allow-SSH-WAN-Codex'
+	uci set firewall.@rule[-1].src='wan'
+	uci set firewall.@rule[-1].src_ip='10.255.255.10'
+	uci set firewall.@rule[-1].proto='tcp'
+	uci set firewall.@rule[-1].dest_port='22'
+	uci set firewall.@rule[-1].target='ACCEPT'
+	uci commit firewall
+fi
+
+# Keep LAN web management on 80/443 and expose WAN-side management on 8088/7443.
+if command -v uci >/dev/null 2>&1; then
+	uci -q delete uhttpd.main.listen_http
+	uci add_list uhttpd.main.listen_http='0.0.0.0:80'
+	uci add_list uhttpd.main.listen_http='[::]:80'
+	uci add_list uhttpd.main.listen_http='0.0.0.0:8088'
+	uci add_list uhttpd.main.listen_http='[::]:8088'
+	uci -q delete uhttpd.main.listen_https
+	uci add_list uhttpd.main.listen_https='0.0.0.0:443'
+	uci add_list uhttpd.main.listen_https='[::]:443'
+	uci add_list uhttpd.main.listen_https='0.0.0.0:7443'
+	uci add_list uhttpd.main.listen_https='[::]:7443'
+	uci commit uhttpd
+
+	if ! uci show firewall 2>/dev/null | grep -q "Allow-Web-WAN-8088-Codex"; then
+		uci add firewall rule >/dev/null
+		uci set firewall.@rule[-1].name='Allow-Web-WAN-8088-Codex'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].src_ip='10.255.255.10'
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].dest_port='8088'
+		uci set firewall.@rule[-1].target='ACCEPT'
+	fi
+
+	if ! uci show firewall 2>/dev/null | grep -q "Allow-Web-WAN-7443-Codex"; then
+		uci add firewall rule >/dev/null
+		uci set firewall.@rule[-1].name='Allow-Web-WAN-7443-Codex'
+		uci set firewall.@rule[-1].src='wan'
+		uci set firewall.@rule[-1].src_ip='10.255.255.10'
+		uci set firewall.@rule[-1].proto='tcp'
+		uci set firewall.@rule[-1].dest_port='7443'
+		uci set firewall.@rule[-1].target='ACCEPT'
+	fi
+
+	uci commit firewall
+fi
+
+rm -f /tmp/luci-indexcache /tmp/luci-modulecache/* 2>/dev/null || true
+
+exit 0

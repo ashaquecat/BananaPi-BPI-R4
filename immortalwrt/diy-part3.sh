@@ -136,23 +136,43 @@ rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2sock
 # Clone community packages to package/community
 mkdir -p package/community
 pushd package/community
-git clone --depth=1 -b dev https://github.com/fw876/helloworld
-# rm -rf helloworld/{naiveproxy,shadowsocks-libev,shadowsocksr-libev,shadow-tls,simple-obfs,tcping,tuic-client,v2ray-plugin,xray-core,xray-plugin}
-git clone --depth=1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall-packages.git
-[ -f openwrt-passwall-packages/haproxy/Makefile ] && sed -i '/^[[:space:]]*ADDON+=USE_QUIC=1$/d' openwrt-passwall-packages/haproxy/Makefile
-git clone --depth=1 -b main https://github.com/Openwrt-Passwall/openwrt-passwall.git
-git clone --depth=1 https://github.com/nikkinikki-org/OpenWrt-nikki
-[ -f OpenWrt-nikki/nikki/Makefile ] && perl -0pi -e 's/define Build\/Compile\r?\n\r?\nendef/define Build\/Compile\n\nendef\n\ndefine Build\/InstallDev\n\nendef/' OpenWrt-nikki/nikki/Makefile
-git clone --depth=1 https://github.com/1522042029/luci-app-socat
 git clone --depth=1 https://github.com/jerrykuku/luci-theme-argon
 git clone --depth=1 https://github.com/jerrykuku/luci-app-argon-config
 merge_package https://github.com/MedyMa/luci-app luci-app/Luci-app/luci-app-fan
-merge_package https://github.com/MedyMa/luci-app luci-app/Luci-app/luci-app-adguardhome
-merge_package https://github.com/MedyMa/luci-app luci-app/Luci-app/luci-app-modemband
 merge_package https://github.com/MedyMa/luci-app luci-app/Luci-app/luci-app-sfp-status
 merge_package https://github.com/MedyMa/luci-app luci-app/Luci-app/luci-app-turboacc-mtk
-merge_package "-b main https://github.com/linkease/ddnsto-openwrt-package" ddnsto-openwrt-package/ddnsto
-merge_package "-b main https://github.com/linkease/ddnsto-openwrt-package" ddnsto-openwrt-package/luci-app-ddnsto
+
+# Packages requested for the BPI-R4 image but not consistently present in the
+# mt798x feed snapshot used by this workflow.
+git clone --depth=1 https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community
+git clone --depth=1 https://github.com/timsaya/openwrt-bandix bandix
+git clone --depth=1 https://github.com/timsaya/luci-app-bandix
+git clone --depth=1 https://github.com/QiuSimons/luci-app-daed dae
+git clone --depth=1 https://github.com/gdy666/luci-app-lucky
+git clone --depth=1 https://github.com/sirpdboy/netspeedtest
+git clone --depth=1 https://github.com/sirpdboy/luci-app-partexp
+git clone --depth=1 https://github.com/animegasan/luci-app-wolplus
+
+git clone --depth=1 https://github.com/EasyTier/luci-app-easytier easytier-src
+[ -d easytier-src/easytier ] && mv easytier-src/easytier .
+[ -d easytier-src/luci-app-easytier ] && mv easytier-src/luci-app-easytier .
+rm -rf easytier-src
+
+git clone --depth=1 --filter=blob:none --sparse https://github.com/QiuSimons/OpenWrt-Add kiddin9-openwrt-packages
+(
+  cd kiddin9-openwrt-packages
+  git sparse-checkout set luci-app-ap-modem
+)
+[ -d kiddin9-openwrt-packages/luci-app-ap-modem ] && mv kiddin9-openwrt-packages/luci-app-ap-modem .
+rm -rf kiddin9-openwrt-packages
+
+git clone --depth=1 https://github.com/linkease/istore-ui istore-ui-src
+[ -d istore-ui-src/app-store-ui ] && mv istore-ui-src/app-store-ui .
+[ -d istore-ui-src/luci-app-store ] && mv istore-ui-src/luci-app-store .
+rm -rf istore-ui-src
+git clone --depth=1 https://github.com/linkease/istore istore-src
+[ -d istore-src/luci ] && cp -rf istore-src/luci/* .
+rm -rf istore-src
 popd
 
 # add luci-app-mosdns
@@ -166,13 +186,6 @@ create_aqr10g_phy_fw_package
 # BPI-R4 SFP warm reboot recovery: allow shared MOD_DEF0 probing, extend
 # copper-module quirks, and force Aquantia AQR/CUX PHY software reset on probe.
 install_sfp_warm_reboot_patches
-
-# add luci-app-OpenClash
-mkdir -p package/OpenClash
-pushd package/OpenClash
-git clone --depth=1  https://github.com/vernesong/OpenClash
-git config core.sparsecheckout true
-popd
 
 # Fix opkg feed URLs: 24.10-SNAPSHOT feeds are gone, use latest stable 24.10.6
 sed -i 's|24.10-SNAPSHOT|24.10.6|g' include/version.mk
@@ -280,12 +293,6 @@ patch_makefile_dep \
     'CONFIG_BOOTDELAY=30' \
     'CONFIG_BOOTDELAY=10'
 
-patch_makefile_dep \
-    package/emortal/autocore/Makefile \
-    '+(TARGET_mediatek||TARGET_mvebu):mhz' \
-    '+(TARGET_mediatek||TARGET_mvebu):mhz \
-    +TARGET_mediatek:wireless-tools'
-
 [ -d target/linux/mediatek/files-6.6 ] && {
 	# Enable LVTS thermal sensor
 	sed -i '/lvts: lvts@1100a000 {/,/^[[:space:]]*};/ { /status = "disabled";/d; }' \
@@ -334,29 +341,5 @@ _purge_libcrypt_compat
 # Downgrade the usign SHA-512 padding warning from ERROR_MESSAGE (red/scary) 
 sed -i 's/ERROR_MESSAGE,WARNING: Applying padding in/MESSAGE,WARNING: Applying padding in/' package/Makefile
 
-# LuCI and mtwifi patches for padavanonly/immortalwrt-mt798x-6.6 only.
-# Do not reuse the openwrt-24.10 or master patch filenames in this chain.
-[ -f feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/60_wifi.js ] && \
-    apply_workspace_patch "$GITHUB_WORKSPACE/patches/filogic/1000-mtwifi-6.6-luci-status-overview-wifi7-mlo.patch"
-
-[ -f feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js ] && \
-    apply_workspace_patch "$GITHUB_WORKSPACE/patches/filogic/1001-mtwifi-6.6-luci-network-wireless-station-hints.patch"
-
-[ -f feeds/luci/modules/luci-mod-network/htdocs/luci-static/resources/view/network/wireless.js ] && \
-    apply_workspace_patch "$GITHUB_WORKSPACE/patches/filogic/999-mtwifi-6.6-luci-wireless-mtk-mode-matrix.patch"
-
-[ -d package/system/rpcd ] && {
-    mkdir -p package/system/rpcd/patches
-    install -m 0644 \
-        "$GITHUB_WORKSPACE/patches/filogic/997-mtwifi-6.6-rpcd-iwinfo-export-mhz-hi.patch" \
-        package/system/rpcd/patches/997-iwinfo-export-eht-dcm.patch
-}
-
-[ -f package/network/utils/iwinfo/src/iwinfo_mtk.c ] && \
-    apply_workspace_patch "$GITHUB_WORKSPACE/patches/filogic/998-mtwifi-6.6-iwinfo-mtk-fix-6ghz-reporting.patch"
-
-[ -f package/mtk/applications/luci-app-mtwifi-cfg/root/usr/share/luci-app-mtwifi-cfg/wireless-mtk.js ] && \
-    apply_workspace_patch "$GITHUB_WORKSPACE/patches/filogic/1005-mtwifi-6.6-luci-wireless-mtk-station-and-rate-fixes.patch"
-
-[ -f feeds/luci/modules/luci-mod-status/htdocs/luci-static/resources/view/status/include/60_wifi.js ] && \
-    apply_workspace_patch "$GITHUB_WORKSPACE/patches/filogic/1002-mtwifi-6.6-luci-status-overview-rate-mhz-hi.patch"
+# Wireless packages are intentionally left out of this image, so the mtwifi LuCI
+# patches are skipped as well.

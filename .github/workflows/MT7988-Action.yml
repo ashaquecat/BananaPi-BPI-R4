@@ -3,6 +3,15 @@ name: MT7988-Action
 on:
   schedule:
     - cron: 0 17 * * *
+  push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/MT7988-Action.yml'
+      - 'files/**'
+      - 'immortalwrt/**'
+      - 'patches/**'
+      - 'scripts/**'
   workflow_dispatch:
 
 permissions:
@@ -44,13 +53,13 @@ jobs:
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        ( sudo -E apt-get -qq update
+        sudo -E apt-get -qq update
         sudo -E apt-get -qq install build-essential clang flex g++ gawk gcc-multilib gettext \
-        git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev swig libpython3-dev aria2 jq subversion qemu-utils ccache rename libelf-dev
-        sudo -E apt-get -qq purge azure-cli ghc* zulu* hhvm llvm* firefox powershell openjdk* dotnet* google* mysql* php* android* rename speedtest-cli
+        git libncurses5-dev libssl-dev python3-distutils rsync unzip zlib1g-dev swig libpython3-dev aria2 jq subversion qemu-utils ccache rename libelf-dev llvm dwarves pahole
+        sudo -E apt-get -qq purge azure-cli ghc* zulu* hhvm firefox powershell openjdk* dotnet* google* mysql* php* android* rename speedtest-cli
         sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
         sudo -E apt-get -qq autoremove --purge
-        sudo -E apt-get -qq clean ) &
+        sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
         
     - name: Initialize Environment and Display System Info
