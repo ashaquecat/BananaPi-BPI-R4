@@ -30,6 +30,18 @@ if command -v sudo >/dev/null 2>&1 && command -v apt-get >/dev/null 2>&1; then
   sudo -E apt-get -qq install -y llvm dwarves pahole
 fi
 
+patch_makefile_dep() {
+  local file_path="$1"
+  local old_text="$2"
+  local new_text="$3"
+
+  [ -f "$file_path" ] || return 0
+  grep -qF "$old_text" "$file_path" || return 0
+
+  PATCH_OLD_TEXT="$old_text" PATCH_NEW_TEXT="$new_text" \
+    perl -0pi -e 'BEGIN { $old = $ENV{"PATCH_OLD_TEXT"}; $new = $ENV{"PATCH_NEW_TEXT"}; } s/\Q$old\E/$new/g' "$file_path"
+}
+
 prepare_requested_packages() {
   mkdir -p package/community
   (
@@ -41,8 +53,21 @@ prepare_requested_packages() {
       git clone --depth=1 https://github.com/timsaya/openwrt-bandix bandix
     [ -d luci-app-bandix ] || \
       git clone --depth=1 https://github.com/timsaya/luci-app-bandix
-    [ -d dae ] || \
-      git clone --depth=1 https://github.com/QiuSimons/luci-app-daed dae
+    if [ ! -d daed ] || [ ! -d luci-app-daed ]; then
+      rm -rf dae daed luci-app-daed kiddin9-op-packages
+      git clone --depth=1 --filter=blob:none --sparse https://github.com/kiddin9/op-packages kiddin9-op-packages
+      (
+        cd kiddin9-op-packages
+        git sparse-checkout set daed luci-app-daed
+      )
+      [ -d kiddin9-op-packages/daed ] && mv kiddin9-op-packages/daed .
+      [ -d kiddin9-op-packages/luci-app-daed ] && mv kiddin9-op-packages/luci-app-daed .
+      rm -rf kiddin9-op-packages
+    fi
+    patch_makefile_dep \
+      luci-app-daed/Makefile \
+      '+daed +daed-geoip +daed-geosite' \
+      '+daed +v2ray-geoip +v2ray-geosite'
     [ -d luci-app-lucky ] || \
       git clone --depth=1 https://github.com/gdy666/luci-app-lucky
     [ -d netspeedtest ] || \
@@ -165,7 +190,9 @@ done
 for pkg in \
   adguardhome ddns-scripts ddns-scripts-services ddnsto frpc nikki nlbwmon \
   shairport-sync shairport-sync-openssl smartdns socat wol \
+  docker docker-compose dockerd containerd runc \
   luci-app-adguardhome luci-app-airplay2 luci-app-ddns luci-app-ddnsto \
+  luci-app-dockerman luci-i18n-dockerman-zh-cn \
   luci-app-frpc luci-app-homeproxy luci-app-nikki luci-app-nlbwmon \
   luci-app-openclash luci-app-passwall luci-app-smartdns luci-app-socat \
   luci-app-ssr-plus luci-app-wol \
@@ -176,7 +203,7 @@ for pkg in \
   shadowsocks-libev-config shadowsocks-libev-ss-local \
   shadowsocks-libev-ss-redir shadowsocks-libev-ss-server \
   shadowsocks-rust-sslocal shadowsocks-rust-ssserver simple-obfs-client \
-  sing-box tcping tuic-client v2dat v2ray-geoip v2ray-geosite \
+  sing-box tcping tuic-client v2dat \
   v2ray-plugin xray-core xray-plugin
 do
   set_config "PACKAGE_${pkg}" n
@@ -222,6 +249,7 @@ for pkg in \
   luci-app-eqos-mtk luci-app-turboacc-mtk \
   kmod-sched-bpf kmod-xdp-sockets-diag libbpf bpftool libnetfilter-queue1 \
   daed luci-app-daed luci-i18n-daed-zh-cn \
+  v2ray-geoip v2ray-geosite \
   lxc lxc-attach lxc-auto lxc-autostart lxc-cgroup lxc-checkconfig lxc-common \
   lxc-config lxc-configs lxc-console lxc-copy lxc-create lxc-destroy lxc-device \
   lxc-execute lxc-freeze lxc-hooks lxc-info lxc-ls lxc-monitor lxc-monitord \

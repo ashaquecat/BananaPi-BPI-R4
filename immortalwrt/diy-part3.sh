@@ -131,7 +131,7 @@ rm -rf feeds/luci/applications/luci-app-argon-config
 rm -rf feeds/luci/applications/luci-app-passwall
 rm -rf feeds/luci/applications/luci-app-modemband
 rm -rf package/mtk/applications/luci-app-turboacc-mtk
-rm -rf feeds/packages/net/{xray-core,v2ray-geodata,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
+rm -rf feeds/packages/net/{xray-core,sing-box,chinadns-ng,dns2socks,hysteria,ipt2socks,microsocks,naiveproxy,shadowsocks-libev,shadowsocks-rust,shadowsocksr-libev,simple-obfs,tcping,trojan-plus,tuic-client,v2ray-plugin,xray-plugin,geoview,shadow-tls}
 
 # Clone community packages to package/community
 mkdir -p package/community
@@ -147,7 +147,19 @@ merge_package https://github.com/MedyMa/luci-app luci-app/Luci-app/luci-app-turb
 git clone --depth=1 https://github.com/Tokisaki-Galaxy/luci-app-tailscale-community
 git clone --depth=1 https://github.com/timsaya/openwrt-bandix bandix
 git clone --depth=1 https://github.com/timsaya/luci-app-bandix
-git clone --depth=1 https://github.com/QiuSimons/luci-app-daed dae
+rm -rf daed luci-app-daed kiddin9-op-packages
+git clone --depth=1 --filter=blob:none --sparse https://github.com/kiddin9/op-packages kiddin9-op-packages
+(
+  cd kiddin9-op-packages
+  git sparse-checkout set daed luci-app-daed
+)
+[ -d kiddin9-op-packages/daed ] && mv kiddin9-op-packages/daed .
+[ -d kiddin9-op-packages/luci-app-daed ] && mv kiddin9-op-packages/luci-app-daed .
+rm -rf kiddin9-op-packages
+patch_makefile_dep \
+    luci-app-daed/Makefile \
+    '+daed +daed-geoip +daed-geosite' \
+    '+daed +v2ray-geoip +v2ray-geosite'
 git clone --depth=1 https://github.com/gdy666/luci-app-lucky
 git clone --depth=1 https://github.com/sirpdboy/netspeedtest
 git clone --depth=1 https://github.com/sirpdboy/luci-app-partexp
