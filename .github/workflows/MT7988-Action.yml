@@ -276,6 +276,7 @@ jobs:
 
     - name: 删除旧的Releases
       if: steps.tag.outputs.status == 'success' && !cancelled()
+      continue-on-error: true
       uses: MedyMa/delete-older-releases@v0.3.4
 
       with:
@@ -283,4 +284,4 @@ jobs:
         delete_tags: true
         delete_tag_pattern: '^.*-immortalwrt_MT7988_draft_mt798x-mt799x-6\.6-mtwifi$'
       env:
-        GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
