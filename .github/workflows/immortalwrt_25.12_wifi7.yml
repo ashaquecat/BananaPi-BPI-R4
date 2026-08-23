@@ -267,4 +267,4 @@ jobs:
         delete_tags: true
         delete_tag_pattern: '^.*-immortalwrt_25\.12-dev-wifi7$'
       env:
-        GITHUB_TOKEN: ${{ secrets.RELEASES_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
